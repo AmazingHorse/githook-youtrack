@@ -1,20 +1,24 @@
 #!/usr/bin/env ruby
 
-#
-# Copy this locally to your git repo as .git/hooks/commit-msg
-#
-
 require 'net/http'
 require 'nokogiri'
 
-$issue_regex = /( |^)#(\w+-\d+)/
+## FILL THESE IN
+
+# Youtrack server URL/port
 $server_url = "10.86.86.132"
 $port = 8080
+
+# Youtrack credentials (password plaintext, I know...)
+$username = "bheughan"
+$password = "N1kwil2btbm"
+
+## END
+
+$issue_regex = /( |^)#(\w+-\d+)/
 $message_file = ARGV.first
 $commit_message = File.read($message_file)
 $invalid_commit = false
-$username = "bheughan"
-$password = "N1kwil2btbm"
 
 def invalid_commit
   $invalid_commit = true
