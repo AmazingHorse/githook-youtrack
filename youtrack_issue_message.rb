@@ -13,16 +13,32 @@ $port = 8080
 $message_file = ARGV.first
 $commit_message = File.read($message_file)
 $invalid_commit = false
+$username = "bheughan"
+$password = "N1kwil2btbm"
 
 def invalid_commit
   $invalid_commit = true
 end
 
-def check_issue(issue)
-    http = Net::HTTP.new($server_url, $port)
+def youtrack_login(username, password)
+	http = Net::HTTP.new($server_url, $port)
 	http.set_debug_output($stdout)
+	# First, login to youtrack given above credentials
+	login_url = "/youtrack/rest/user/login"
+	request = Net::HTTP::Post.new(login_url)
+	request.body = "login=#{username}&password=#{password}"
+	request["Connection"] = "keep-alive"
+	response = http.request(request)
+	# Save cookies for subsequent API requests
+	cookies = response.response['set-cookie']
+	return cookies
+end
+
+def check_issue(issue, cookies)
+    http = Net::HTTP.new($server_url, $port)
     issue_url = "/youtrack/rest/issue/#{issue}"
     request = Net::HTTP::Get.new(issue_url)
+	request['Cookie'] = cookies
     response = http.request(request)
 
     if response.code == '404'
@@ -30,28 +46,28 @@ def check_issue(issue)
       invalid_commit
     end
 	
-    validate_issue_approved(response.body, issue) if response.code == '200'
+    validate_issue_approved(response.body, issue, cookies) if response.code == '200'
 end
 
-def check_issue_exists
+def check_issue_exists(cookies)
   $commit_message.scan($issue_regex) { |m, issue|
-    check_issue issue
+    check_issue issue, cookies
   }
 end
 
-def validate_commit
+def validate_commit cookies
   if !$issue_regex.match($commit_message)
     invalid_commit
     puts '[Policy Violation] - No YouTrack issues found in commit message'
     return
   end
 
-  check_issue_exists
+  check_issue_exists cookies
 end
 
 # An example of how to parse the YouTrack response and validate
 # against a custom field
-def validate_issue_approved(youtrack_response, issue)
+def validate_issue_approved(youtrack_response, issue, cookies)
   xml = Nokogiri::XML(youtrack_response)
   type = xml.xpath('//field[@name = "Type"]/value/text()').inner_text()
   approved = xml.xpath('//field[@name = "Approved For Work"]/value/text()').inner_text()
@@ -62,7 +78,7 @@ def validate_issue_approved(youtrack_response, issue)
 
   if type.downcase == 'task'
     puts "Validating #{issue}'s parent #{task_of}"
-    check_issue task_of
+    check_issue task_of, cookies
   end
 
   if feature && !approved_for_work
@@ -77,7 +93,8 @@ if $server_url.nil?
 end
 
 puts 'Checking YouTrack issues...'
-validate_commit
+cookies = youtrack_login $username, $password
+validate_commit cookies
 
 if $invalid_commit
   puts "[Error] - Commit rejected, please fix commit message and try again"
