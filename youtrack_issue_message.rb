@@ -8,7 +8,8 @@ require 'net/http'
 require 'nokogiri'
 
 $issue_regex = /( |^)#(\w+-\d+)/
-$server_url = nil
+$server_url = "10.86.86.132"
+$port = 8080
 $message_file = ARGV.first
 $commit_message = File.read($message_file)
 $invalid_commit = false
@@ -18,8 +19,9 @@ def invalid_commit
 end
 
 def check_issue(issue)
-    http = Net::HTTP.new($server_url)
-    issue_url = "/rest/issue/#{issue}"
+    http = Net::HTTP.new($server_url, $port)
+	http.set_debug_output($stdout)
+    issue_url = "/youtrack/rest/issue/#{issue}"
     request = Net::HTTP::Get.new(issue_url)
     response = http.request(request)
 
@@ -27,7 +29,7 @@ def check_issue(issue)
       puts "[Policy Violation] - Issue not found: ##{issue}"
       invalid_commit
     end
-
+	
     validate_issue_approved(response.body, issue) if response.code == '200'
 end
 
