@@ -26,7 +26,6 @@ end
 
 def youtrack_login(username, password)
 	http = Net::HTTP.new($server_url, $port)
-	http.set_debug_output($stdout)
 	# First, login to youtrack given above credentials
 	login_url = "/youtrack/rest/user/login"
 	request = Net::HTTP::Post.new(login_url)
@@ -44,18 +43,21 @@ def check_issue(issue, cookies)
     request = Net::HTTP::Get.new(issue_url)
 	request['Cookie'] = cookies
     response = http.request(request)
-
     if response.code == '404'
-      puts "[Policy Violation] - Issue not found: ##{issue}"
-      invalid_commit
+		return ''
     end
-	
-    validate_issue_approved(response.body, issue, cookies) if response.code == '200'
+	return response.body
 end
 
 def check_issue_exists(cookies)
   $commit_message.scan($issue_regex) { |m, issue|
-    check_issue issue, cookies
+	puts "#{m}"
+	response = check_issue(issue, cookies)
+    if response.to_s == ''
+		puts "[Policy Violation] - Issue not found: ##{issue}"
+		invalid_commit
+	end
+	add_comment_to_issue(issue, response, cookies)
   }
 end
 
@@ -71,24 +73,14 @@ end
 
 # An example of how to parse the YouTrack response and validate
 # against a custom field
-def validate_issue_approved(youtrack_response, issue, cookies)
-  xml = Nokogiri::XML(youtrack_response)
+def add_comment_to_issue(issue, response, cookies)
+  xml = Nokogiri::XML(response)
+  puts "#{xml}"
   type = xml.xpath('//field[@name = "Type"]/value/text()').inner_text()
   approved = xml.xpath('//field[@name = "Approved For Work"]/value/text()').inner_text()
   task_of = xml.xpath('//field[@name = "links"]/value[@role = "subtask of"]/text()').inner_text()
-
   feature = type.downcase == 'feature'
   approved_for_work = feature && approved.downcase == 'approved'
-
-  if type.downcase == 'task'
-    puts "Validating #{issue}'s parent #{task_of}"
-    check_issue task_of, cookies
-  end
-
-  if feature && !approved_for_work
-    puts "[Policy Violation] - ##{issue} not approved for work"
-    invalid_commit
-  end
 end
 
 if $server_url.nil?
