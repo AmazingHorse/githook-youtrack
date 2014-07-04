@@ -1,7 +1,7 @@
 #!/usr/bin/env ruby
 
 require 'net/http'
-require 'nokogiri'
+#require 'nokogiri'
 
 ## FILL THESE IN
 
@@ -21,11 +21,18 @@ if $server_url.nil?
 end
 
 # import stash env variables
-#variables = %w{STASH_USER_NAME STASH_REPO_NAME}
-#missing = variables.find_all { |v| ENV[v] == nil }
-#unless missing.empty?
-#    raise "[Error] The following environment variables are missing and are needed to run this script: #{missing.join(', ')}."
-#end
+=begin
+variables = %w{STASH_USER_NAME STASH_REPO_NAME}
+missing = variables.find_all { |v| ENV[v] == nil }
+unless missing.empty?
+    raise "[Error] The following environment variables are missing and are needed to run this script: #{missing.join(', ')}."
+end
+
+$user = ENV[STASH_USER_NAME]
+$repo = ENV[STASH_REPO_NAME]
+=end
+$user = "bheughan"
+$repo = "stashenheimer"
 
 $from_ref = "8f36678"#ARGV.first
 $to_ref = "c2b6a07"#ARGV.second
@@ -35,8 +42,8 @@ if $from_ref.to_s == '' || $to_ref.to_s == ''
 end
 	
 #get list of commits since last push
-$git_log = `git log --oneline #{$from_ref}~1..#{$to_ref}`
-
+#$git_log = `git log --oneline #{$from_ref}~1..#{$to_ref}`
+$git_log = File.open("log.txt").read
 # if it's empty, quit and let git handle it
 if $git_log.to_s == ''
 	exit 0
@@ -48,6 +55,7 @@ $commit_list = $git_log.split(/\r?\n/)
 # for each message, add the SHA and message to seperate identically indexed arrays
 $hashes = Array.new
 $messages = Array.new
+$issues = Array.new
 $hashes_regex = /\s.*/
 $messages_regex = /^\w*\s*/
 
@@ -62,81 +70,81 @@ $issue_regex = /( |^)#(\w+-\d+)/
 # looks for #<proj>-<issue#> strings, with trailing spaces, colons, or hyphens
 $remove_issue_regex = /( |^)#(\w+-\d+):? ? -? ?/
 
-$invalid_commit = false
+# FIXME: gracefully handle broken logins
 
-def invalid_commit
-  $invalid_commit = true
-end
-
-def youtrack_login username, password
-	http = Net::HTTP.new($server_url, $port)
+def youtrack_login username, password, http
 	# First, login to youtrack given above credentials
 	login_url = "/youtrack/rest/user/login"
 	puts "Logging into Youtrack as root..."
 	request = Net::HTTP::Post.new(login_url)
 	request.body = "login=#{username}&password=#{password}"
 	request["Connection"] = "keep-alive"
+	request["Content-Type"] = "application/x-www-form-urlencoded"
 	response = http.request(request)
 	puts "Success!"
 	# Save cookies for subsequent API requests
-	cookies = response.response['set-cookie']
+	cookies = response['set-cookie']
 	return cookies
 end
 
-def check_issue_exists(issue, cookies)
-    http = Net::HTTP.new($server_url, $port)
-    issue_url = "/youtrack/rest/issue/#{issue}"
-    request = Net::HTTP::Get.new(issue_url)
-	request['Cookie'] = cookies
-    response = http.request(request)
-    if response.code == '404'
+# FIXME: Handle other HTTP codes?
+
+def scan_for_issue message, hash, cookies, http
+	if !$issue_regex.match(message)
+		puts "[Policy Violation] - No YouTrack issues found in commit message. Please amend git commit #{hash}."
+		puts "
 		return ''
-    end
-	return response.body
-end
-
-def scan_for_issues(user, cookies)
-  $commit_message.scan($issue_regex) { |m, issue|
-	response = check_issue(issue, cookies)
-    if response.to_s == ''
-		puts "[Policy Violation] - Issue not found: ##{issue}"
-		invalid_commit
-		return
 	end
-	# Remove issue# from commit message and parse
-	message = $commit_message.gsub($remove_issue_regex, '')
-	add_comment_to_issue(issue, message, user, cookies)
-  }
+	message.scan($issue_regex) do |m, issue|
+		issue_url = "/youtrack/rest/issue/#{issue}"
+		request = Net::HTTP::Get.new(issue_url)
+		request['Cookie'] = cookies
+		response = http.request(request)
+		if response.code == '404'
+			puts "[Policy Violation] - Issue not found: ##{issue}. Please amend git commit #{hash}."
+			return ''
+		elsif response.code == '200'
+			return issue  
+		else
+			puts "[Policy Violation] - Issue returns invalid HTTP response. Check your youtrack status."
+			return ''
+		end
+	end
 end
 
-def validate_commit user, cookies
-  if !$issue_regex.match($commit_message)
-    invalid_commit
-    puts '[Policy Violation] - No YouTrack issues found in commit message'
-    return
-  end
-  check_issue_exists user, cookies
+def validate_commits cookies, http
+	$messages.zip($hashes).each do |message, hash|
+		issue = scan_for_issue message, hash, cookies, http
+		if issue.to_s == ''
+			puts "[Error] - Commit rejected, please fix commit message and try again"
+			exit 1
+		end
+		$issues.push issue
+	end
 end
 
 # An example of how to parse the YouTrack response and validate
 # against a custom field
-def add_comment_to_issue(issue, message, user, cookies)
-	http = Net::HTTP.new($server_url, $port)
+def add_comments_to_issue message, hash, issue, user, cookies, http
+	# Remove issue# from commit message and parse
+	message_text = message.sub $remove_issue_regex, ''
+	puts message_text
 	# First, login to youtrack given above credentials
 	comment_url = "/youtrack/rest/issue/#{issue}/execute"
 	request = Net::HTTP::Post.new(comment_url)
-	request.body = "comment=#{message}&runAs=#{user}"
+	request.body = "comment=[#{$repo}.git] #{message_text}&runAs=#{user}"
 	request['Cookie'] = cookies
-    response = http.request(request)
+    http.request(request)
 end
 
-puts 'Checking YouTrack issues...'
-cookies = youtrack_login $username, $password
-#validate_commit user, cookies
+http = Net::HTTP.new($server_url, $port)
+cookies = youtrack_login $username, $password, http
 
-if $invalid_commit
-  puts "[Error] - Commit rejected, please fix commit message and try again"
-  puts
-  puts $commit_message
-  exit 1
+puts 'Checking commits...'
+if validate_commits cookies, http
+	puts 'Adding data to youtrack issues...'
+	$messages.zip($hashes, $issues).each do |message, hash, issue|
+		# parsing/splitting of messages should happen here
+		add_comments_to_issue message, hash, issue, $user, cookies, http
+	end
 end
