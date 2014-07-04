@@ -1,7 +1,6 @@
 #!/usr/bin/env ruby
 
 require 'net/http'
-#require 'nokogiri'
 
 ## FILL THESE IN
 
@@ -21,7 +20,6 @@ if $server_url.nil?
 end
 
 # import stash env variables
-=begin
 variables = %w{STASH_USER_NAME STASH_REPO_NAME}
 missing = variables.find_all { |v| ENV[v] == nil }
 unless missing.empty?
@@ -30,20 +28,16 @@ end
 
 $user = ENV[STASH_USER_NAME]
 $repo = ENV[STASH_REPO_NAME]
-=end
-$user = "bheughan"
-$repo = "stashenheimer"
 
-$from_ref = "8f36678"#ARGV.first
-$to_ref = "c2b6a07"#ARGV.second
+$from_ref = ARGV.first
+$to_ref = ARGV.second
 
 if $from_ref.to_s == '' || $to_ref.to_s == ''
 	puts "[Error] Git references not specified. Usage: yim [ref1] [ref2]"
 end
 	
 #get list of commits since last push
-#$git_log = `git log --oneline #{$from_ref}~1..#{$to_ref}`
-$git_log = File.open("log.txt").read
+$git_log = `git log --oneline #{$from_ref}~1..#{$to_ref}`
 # if it's empty, quit and let git handle it
 if $git_log.to_s == ''
 	exit 0
@@ -91,7 +85,7 @@ def fixme_text hash
 	puts "Run the following command:" 
 	puts "\tgit rebase -i #{hash}"
 	puts "You will be dumped into an editor with a bunch of your commits. The one you selected is first."
-	puts "Replace 'pick' with 'reword', save and quit, then add the correct issue from youtrack."
+	puts "Replace 'pick' with 'reword', save and quit, then add the correct issue from youtrack in your commit."
 end
 
 # FIXME: Handle other HTTP codes?
