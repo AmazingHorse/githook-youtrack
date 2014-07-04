@@ -144,9 +144,11 @@ cookies = youtrack_login $username, $password, http
 
 puts 'Checking commits...'
 if validate_commits cookies, http
+	puts 'Finished.'
 	puts 'Adding data to youtrack issues...'
 	$messages.zip($hashes, $issues).each do |message, hash, issue|
 		# parsing/splitting of messages should happen here
 		add_comments_to_issue message, hash, issue, $user, cookies, http
 	end
+	puts 'Finished.'
 end
