@@ -92,7 +92,7 @@ end
 def scan_for_issue message, hash, cookies, http
 	if !$issue_regex.match(message)
 		puts "[Policy Violation] - No YouTrack issues found in commit message. Please amend git commit #{hash}."
-		puts "
+		puts
 		return ''
 	end
 	message.scan($issue_regex) do |m, issue|
