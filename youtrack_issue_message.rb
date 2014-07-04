@@ -87,12 +87,19 @@ def youtrack_login username, password, http
 	return cookies
 end
 
+def fixme_text hash
+	puts "Run the following command:" 
+	puts "\tgit rebase -i #{hash}"
+	puts "You will be dumped into an editor with a bunch of your commits. The one you selected is first."
+	puts "Replace 'pick' with 'reword', save and quit, then add the correct issue from youtrack."
+end
+
 # FIXME: Handle other HTTP codes?
 
 def scan_for_issue message, hash, cookies, http
 	if !$issue_regex.match(message)
 		puts "[Policy Violation] - No YouTrack issues found in commit message. Please amend git commit #{hash}."
-		puts
+		fixme_text hash
 		return ''
 	end
 	message.scan($issue_regex) do |m, issue|
@@ -102,6 +109,7 @@ def scan_for_issue message, hash, cookies, http
 		response = http.request(request)
 		if response.code == '404'
 			puts "[Policy Violation] - Issue not found: ##{issue}. Please amend git commit #{hash}."
+			fixme_text hash
 			return ''
 		elsif response.code == '200'
 			return issue  
