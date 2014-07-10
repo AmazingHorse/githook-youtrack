@@ -20,14 +20,15 @@ if $server_url.nil?
 end
 
 # import stash env variables
-variables = %w{STASH_USER_NAME STASH_REPO_NAME}
-missing = variables.find_all { |v| ENV[v] == nil }
-unless missing.empty?
-    raise "[Error] The following environment variables are missing and are needed to run this script: #{missing.join(', ')}."
-end
+#variables = %w{STASH_USER_NAME STASH_REPO_NAME}
+#missing = variables.find_all { |v| ENV[v] == nil }
+#unless missing.empty?
+#    raise "[Error] The following environment variables are missing and are needed to run this script: #{missing.join(', ')}."
+#end
 
-$user = ENV[STASH_USER_NAME]
-$repo = ENV[STASH_REPO_NAME]
+$user = `git config --get user.name`
+$repo_path = `git rev-parse --show-toplevel`
+$repo = `basename #{$repo_path}`.strip
 
 $from_ref = ARGV.first
 $to_ref = ARGV.second
